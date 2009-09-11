@@ -44,12 +44,10 @@ class Box
 {
     PVector min;
     PVector max;
-    color c;
 
     Box()
     {
         clear();
-        this.c = randomColor();
     }
 
     void clear()
@@ -71,6 +69,12 @@ class Box
         this.max = max(this.max, b.max);
     }
     
+    void expand(float d)
+    {
+        this.min.sub(d,d,d);
+        this.max.add(d,d,d);
+    }
+
     PVector center()
     {
         PVector r = PVector.add(this.min, this.max);
@@ -88,17 +92,18 @@ class Box
         return size().mag() * 0.5;
     }
 
-    void draw()
+    void draw(float scale)
     {
         PVector sz = size();
         PVector p = center();
-        fill(c);
 
         pushMatrix();
         translate(p.x, p.y, p.z);
-        box(sz.x, sz.y, sz.z);
+        box(sz.x*scale, sz.y*scale, sz.z*scale);
         popMatrix();
     }
+
+    void draw() { draw(1.0); }
 };
 
 
@@ -107,13 +112,29 @@ class Box
 //----------------------------------------------------------------------------
 class BvhNode
 {
-    BvhNode above;
-    BvhNode below;
+    BvhNode up;
+    BvhNode left;
+    BvhNode right;
+    
+    Box bounds;
 
     void draw()
     {
+        if(left != null)
+        {
+            fill(255,255,0,100);
+            left.bounds.draw();
+        }
+
+        if(right != null)
+        {
+            fill(0,255,255,100);
+            right.bounds.draw();
+        }
+
+        fill(255,0,255,64);
+        bounds.draw(1.02);
     }
-   
 };
 
 
@@ -121,37 +142,74 @@ class BvhNode
 // Setup
 //----------------------------------------------------------------------------
 
+PVector randomPoint()
+{
+    return new PVector(random(-100, 100),
+                       random(-100, 100),
+                       random(-100, 100));
+}
+
 Box randomBox()
 {
     Box box = new Box();
-    box.addPoint(new PVector(random(-100, 100),
-                             random(-100, 100),
-                             random(-100, 100)));
-    box.addPoint(new PVector(random(-100, 100),
-                             random(-100, 100),
-                             random(-100, 100)));
-    box.addPoint(new PVector(random(-100, 100),
-                             random(-100, 100),
-                             random(-100, 100)));
+    box.addPoint(randomPoint());
+    box.expand(random(1,10));
     return box;
 }
 
-Box a = randomBox();
-Box b = randomBox();
+BvhNode buildRandomBvh()
+{
+    BvhNode nodes[] = new BvhNode[1024];
+    for(int i = 0; i < nodes.length; ++i)
+    {
+        nodes[i] = new BvhNode();
+        nodes[i].bounds = randomBox();
+    }
 
-Box box = randomBox();
+    int count = nodes.length;
+    while(count > 1)
+    {
+        int o = 0;
+        int i = 0;
+        while(i < count)
+        {
+            if(++i == count)
+            {
+                nodes[o++] = nodes[i-1];
+                break;
+            }
+            
+            BvhNode n = new BvhNode();
+            n.left = nodes[i-1];
+            n.right = nodes[i];
+            n.left.up = n;
+            n.right.up = n;
+            n.bounds = new Box();
+            n.bounds.addBox(n.left.bounds);
+            n.bounds.addBox(n.right.bounds);
+
+            nodes[o++] = n;
+            ++i;
+        }
+        
+        count = o;
+    }
+
+    return nodes[0];
+}
+
+BvhNode node = buildRandomBvh();
 float heading = 0;
 float pitch = radians(20);
 float distance = 550;
 PVector center = new PVector(0,0,0);
 
+//----------------------------------------------------------------------------
+// Processing
+//----------------------------------------------------------------------------
 void setup()
 {
-    size(600, 600, P3D);
-
-    box.clear();
-    box.addBox(a);
-    box.addBox(b);
+    size(600, 600, OPENGL);
 }
 
 void draw()
@@ -160,6 +218,8 @@ void draw()
 
     background(40);
     lights();
+
+    Box box = node.bounds;
 
     distance = lerp(distance, box.radius() * 2.4, 0.1);
     center = lerp(center, box.center(), 0.1);
@@ -172,14 +232,7 @@ void draw()
     translate(0, 0, distance);
     endCamera();
 
-
-    stroke(0,1,0);
-    a.draw();
-    stroke(1,0,1);
-    b.draw();
-    stroke(1,1,1);
-    box.draw();
-    
+    node.draw();
 }
 
 void mouseDragged()
@@ -193,13 +246,22 @@ void mouseDragged()
 
 void keyTyped()
 {
-    if(key == 'r')
+    if(key == 'a')
     {
+        // left
+        if(node.left != null)
+            node = node.left;
     }
-    else if(key == ']')
+    else if(key == 'd')
     {
+        // right
+        if(node.right != null)
+            node = node.right;
     }
-    else if(key == '[')
+    else if(key == 'w')
     {
+        // up
+        if(node.up != null)
+            node = node.up;
     }
 }
